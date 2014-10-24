@@ -9,10 +9,11 @@ window.addEventListener
 	{
 		navigator.webkitGetUserMedia({ "audio": true }, use_stream, function() {});
 
-		var sample_length_milliseconds = 100;
+		var fourier_worker = new Worker("fft.js");
+		var sample_length_milliseconds = 200;
+		var audio_context = new AudioContext();
 		function use_stream(stream)
 		{
-			var audio_context = new AudioContext();
 			var microphone = audio_context.createMediaStreamSource(stream);
 			var script_processor = audio_context.createScriptProcessor(256, 1, 1);
 
@@ -29,7 +30,7 @@ window.addEventListener
 				if (buffer.length > sample_length_milliseconds * audio_context.sampleRate / 1000)
 				{
 					recording = false;
-					process_time_series(buffer);
+					fourier_worker.postMessage(buffer);
 					buffer = [];
 				}
 			};
@@ -38,65 +39,60 @@ window.addEventListener
 			script_processor.connect(audio_context.destination);
 			microphone.connect(script_processor);
 
-			document.getElementById("capture").addEventListener
+			/*document.getElementById("capture").addEventListener
 			(
 				"click",
 				function()
 				{
 					recording = true;
 				}
-			);
+			);*/
+
+			setInterval(function() { recording = true; }, 500);
+		}
+
+		fourier_worker.addEventListener("message", interpret_fourier_result);
+
+		var e_note = 82.41; // Hz
+		var notes = [ "E", "F", "F#", "G", "G#", "A", "A#", "B", "C", "C#", "D", "D#" ];
+		function interpret_fourier_result(event)
+		{
+			var time_series = event.data.time_series;
+			var frequency_amplitudes = event.data.frequency_amplitudes;
+			// Skip the zero-frequency mode, which always has a huge amplitude.
+			var magnitudes = frequency_amplitudes.slice(1).map(function(z) { return z[0] * z[0] + z[1] * z[1]; });
+			//console.log(magnitudes);
+
+			var average = magnitudes.reduce(function(a, b) { return a + b; }, 0) / magnitudes.length;
+			var maximum_index = -1;
+			var maximum_magnitude = 0;
+			for (var i = 0; i < magnitudes.length; i++)
+			{
+				if (magnitudes[i] <= maximum_magnitude)
+					continue;
+
+				maximum_index = i;
+				maximum_magnitude = magnitudes[i];
+			}
+
+			// Adding one to the index because we cut off the zero-frequency mode.
+			var dominant_frequency = (maximum_index + 1) * audio_context.sampleRate / time_series.length;
+			console.log("dominant frequency appears to be %f", dominant_frequency);
+			var semitones_up = 12 * Math.log(dominant_frequency / e_note) / Math.log(2);
+
+			var note_index = Math.round(semitones_up) % 12;
+			if (note_index < 0)
+				note_index += 12;
+
+			var note_name = notes[note_index];
+			var closest_named_frequency = e_note * Math.pow(2, Math.round(semitones_up) / 12);
+			console.log("%f semitones above E (82.41 Hz), closest to %s (%f)", semitones_up, note_name, closest_named_frequency);
 		}
 	}
 );
-
-function process_time_series(time_series)
-{
-	var frequency_amplitudes = fourier_transform(time_series);
-	// Skip the zero-frequency mode, which always has a huge amplitude.
-	var magnitudes = frequency_amplitudes.slice(1).map(function(z) { return z[0] * z[0] + z[1] * z[1]; });
-	//console.log(magnitudes);
-
-	var average = magnitudes.reduce(function(a, b) { return a + b; }, 0) / magnitudes.length;
-	var maximum_index = -1;
-	var maximum_magnitude = 0;
-	for (var i = 0; i < magnitudes.length; i++)
-	{
-		if (magnitudes[i] <= maximum_magnitude)
-			continue;
-
-		maximum_index = i;
-		maximum_magnitude = magnitudes[i];
-	}
-
-	var dominant_frequency = maximum_index * 44100 / time_series.length;
-	console.log("dominant frequency appears to be %f", dominant_frequency);
-	var semitones_up = 12 * Math.log(dominant_frequency / 82.41) / Math.log(2);
-	console.log("%f semitones above E (82.41 Hz)", semitones_up);
-}
-
-function fourier_transform(time_series)
-{
-	var scale_factor = 2 * Math.PI / time_series.length;
-	var amplitudes = [];
-	for (var k = 0; k < 50; k++)
-	{
-		var accumulator = [ 0, 0 ];
-		for (var t = 0; t < time_series.length; t++)
-		{
-			accumulator[0] += time_series[t] * Math.cos(scale_factor * k * t);
-			accumulator[1] += time_series[t] * Math.sin(scale_factor * k * t);
-		}
-
-		amplitudes.push(accumulator);
-	}
-
-	return amplitudes;
-}
 </script>
 </head>
 
 <body>
-<button id="capture">capture</button>
 </body>
 </html>
