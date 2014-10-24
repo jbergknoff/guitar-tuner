@@ -1,54 +1,16 @@
 <html>
 <head>
-<style>
-div.bar-container
-{
-	float: left;
-	position: relative;
-	height: 300px;
-	width: 12px;
-	margin: 5px;
-	background: white;
-}
-
-div.bar
-{
-	position: absolute;
-	bottom: 10%;
-	height: 90%;
-	width: 100%;
-	background: steelblue;
-}
-
-div.bar-label
-{
-	position: absolute;
-	bottom: 0;
-}
-</style>
 <script>
-navigator.webkitGetUserMedia({ "audio": true }, UseStream, function() { console.log(arguments); });
-
-var NumberOfOctaves = 4;
-var NoteNames = [ "E", "F", "F#", "G", "G#", "A", "A#", "B", "C", "C#", "D", "D#" ];
-var Notes = {};
-for (var i = 0; i < NumberOfOctaves * 12; i++)
+// 82.41 Hz is an E note.
+navigator.webkitGetUserMedia({ "audio": true }, use_stream, function() {});
+var audio_context;
+var analyzer;
+function use_stream(stream)
 {
-	var NoteName = NoteNames[i % 12];
-	Notes[NoteName] = Notes[NoteName] || [];
-	Notes[NoteName].push(82.41 * Math.pow(2, i / 12));
-}
-
-var AC;
-var Analyzer;
-function UseStream(Stream)
-{
-	AC = new webkitAudioContext();
-	var StreamSource = AC.createMediaStreamSource(Stream);
-	Analyzer = AC.createAnalyser();
-	StreamSource.connect(Analyzer);
-	AC.fftSize = 2048;
-	AC.frequencyBinCount = 1024;
+	audio_context = new AudioContext();
+	var stream_source = audio_context.createMediaStreamSource(stream);
+	analyzer = audio_context.createAnalyser();
+	stream_source.connect(analyzer);
 }
 
 window.addEventListener
@@ -56,136 +18,61 @@ window.addEventListener
 	"load",
 	function()
 	{
-		var RepeatInterval;
-		document.getElementById("once").addEventListener("click", function() { GetTimeSeries(Analyzer); });
-		document.getElementById("start").addEventListener("click", function() { RepeatInterval = setInterval(function() { GetTimeSeries(Analyzer); }, 1000); });
-		document.getElementById("stop").addEventListener("click", function() { clearInterval(RepeatInterval); });
+		document.getElementById("capture").addEventListener("click", function() { get_time_series(analyzer); });
 	}
 );
 
-function GetTimeSeries(Analyzer)
+function get_time_series(analyzer)
 {
-	var Buffer = new Uint8Array(AC.fftSize);
-	Analyzer.getByteTimeDomainData(Buffer);
-	var SignedBuffer = [];
-	for (var i = 0; i < Buffer.length; i++)
-		SignedBuffer.push(Buffer[i] - 128);
+	var buffers = new Uint8Array(analyzer.fftSize);
+	analyzer.getByteTimeDomainData(buffer);
 
-	console.log(JSON.stringify(SignedBuffer));
+	var frequency_amplitudes = fourier_transform(buffer);
+	// Skip the zero-frequency mode, which always has a huge amplitude.
+	var magnitudes = frequency_amplitudes.slice(1).map(function(z) { return z[0] * z[0] + z[1] * z[1]; });
+	//console.log(magnitudes);
 
-	/*
-	var FrequencyBuffer = new Uint8Array(AC.frequencyBinCount);
-	Analyzer.getByteFrequencyData(FrequencyBuffer);
-	console.log(JSON.stringify(FrequencyBuffer));
-	*/
-
-	var s = "";
-	for (var i = 0; i < SignedBuffer.length; i++)
-		s += (i > 0 ? "," : "") + "{" + (i / AC.sampleRate) + "," + SignedBuffer[i] + "}";
-
-	//console.log("{" + s + "}");
-
-	ComplexFourierAnalyze(SignedBuffer);
-}
-
-function RealFourierAnalyze(Buffer)
-{
-	// Start the buffer from a zero so cosine terms can be neglected.
-	for (var i = 0; i < Buffer.length; i++)
+	var average = magnitudes.reduce(function(a, b) { return a + b; }, 0) / magnitudes.length;
+	var maximum_index = -1;
+	var maximum_magnitude = 0;
+	for (var i = 0; i < magnitudes.length; i++)
 	{
-		if (Buffer[i] == 0)
-		{
-			Buffer = Buffer.slice(i);
-			break;
-		}
+		if (magnitudes[i] <= maximum_magnitude)
+			continue;
+
+		maximum_index = i;
+		maximum_magnitude = magnitudes[i];
 	}
 
-	ComputeCorrelations(Buffer);
+	var dominant_frequency = maximum_index * analyzer.context.sampleRate / analyzer.fftSize;
+	console.log("dominant frequency appears to be %f", dominant_frequency);
+	var semitones_up = 12 * Math.log(dominant_frequency / 82.41) / Math.log(2);
+	console.log("%f semitones above E (82.41 Hz)", semitones_up);
 }
 
-function ComplexFourierAnalyze(Buffer)
+function fourier_transform(time_series)
 {
-	ComputeCorrelations(Buffer, true);
-}
-
-function ComputeCorrelations(Buffer, Complex)
-{
-	var FavoriteNote = { "Value": 0 };
-	var FavoriteFrequency = { "Value": 0 };
-	var Scale = 1 / AC.sampleRate;
-
-	var AllCorrelations = [];
-	for (var N in Notes)
+	var scale_factor = 2 * Math.PI / time_series.length;
+	var amplitudes = [];
+	for (var k = 0; k < 20; k++)
 	{
-		var Correlations = Notes[N].map
-		(
-			function(Frequency)
-			{
-				var Coefficient = 2 * Math.PI * Frequency * Scale;
+		var accumulator = [ 0, 0 ];
+		for (var t = 0; t < time_series.length; t++)
+		{
+			accumulator[0] += time_series[t] * Math.cos(scale_factor * k * t);
+			accumulator[1] += time_series[t] * Math.sin(scale_factor * k * t);
+		}
 
-				var CorrelationSine = 0;
-				for (var i = 0; i < Buffer.length; i++)
-					CorrelationSine += Buffer[i] * Math.sin(Coefficient * i);
-
-				var CorrelationCosine = 0;
-				if (Complex)
-				{
-					for (var i = 0; i < Buffer.length; i++)
-						CorrelationCosine += Buffer[i] * Math.cos(Coefficient * i);
-				}
-
-				var Correlation;
-				if (Complex) Correlation = Math.sqrt(CorrelationSine * CorrelationSine + CorrelationCosine + CorrelationCosine);
-				else Correlation = Math.abs(CorrelationSine);
-
-				if (Correlation > FavoriteFrequency.Value) FavoriteFrequency = { "Frequency": Frequency.toFixed(2), "Value": Correlation, "Note": N };
-				//console.log(N + " " + Frequency.toFixed(2) + ": correlation = " + Correlation.toFixed(2));
-				return { "Frequency": Frequency.toFixed(2), "Note": N, "Correlation": Correlation };
-			}
-		);
-
-		Correlations.forEach(function(C) { AllCorrelations.push(C); });
-
-		var Sum = 0;
-		Correlations.forEach(function(C) { Sum += C.Correlation; });
-		var Mean = Sum / Correlations.length;
-		if (Mean > FavoriteNote.Value) FavoriteNote = { "Note": N, "Value": Mean };
+		amplitudes.push(accumulator);
 	}
 
-	console.log("I think I'm hearing the note: " + FavoriteNote.Note + ". The strongest frequency is " + FavoriteFrequency.Frequency + " Hz (" + FavoriteFrequency.Note + ")");
-
-	var v = document.getElementById("visualization");
-	while (v.hasChildNodes()) { v.removeChild(v.lastChild); }
-
-	AllCorrelations.sort(function(A, B) { return A.Frequency - B.Frequency; });
-	//console.log(JSON.stringify(AllCorrelations));
-	AllCorrelations.forEach
-	(
-		function(C)
-		{
-			var BarContainer = document.createElement("div");
-			BarContainer.className = "bar-container";
-			var Bar = document.createElement("div");
-			Bar.className = "bar";
-			Bar.style.height = (90 * (C.Correlation / FavoriteFrequency.Value)) + "%";
-			BarContainer.appendChild(Bar);
-			var BarLabel = document.createElement("div");
-			BarLabel.className = "bar-label";
-			//BarLabel.textContent = C.Frequency + " Hz";
-			BarLabel.textContent = C.Note;
-			BarContainer.appendChild(BarLabel);
-			v.appendChild(BarContainer);
-		}
-	);
-
+	return amplitudes;
 }
 </script>
 </head>
 
 <body>
-<button id="once">once</button>
-<button id="start">start</button>
-<button id="stop">stop</button>
+<button id="capture">capture</button>
 <br><br>
 <div id="visualization">
 </div>
