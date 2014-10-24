@@ -2,32 +2,57 @@
 <head>
 <script>
 // 82.41 Hz is an E note.
-navigator.webkitGetUserMedia({ "audio": true }, use_stream, function() {});
-var audio_context;
-var analyzer;
-function use_stream(stream)
-{
-	audio_context = new AudioContext();
-	var stream_source = audio_context.createMediaStreamSource(stream);
-	analyzer = audio_context.createAnalyser();
-	stream_source.connect(analyzer);
-}
-
 window.addEventListener
 (
 	"load",
 	function()
 	{
-		document.getElementById("capture").addEventListener("click", function() { get_time_series(analyzer); });
+		navigator.webkitGetUserMedia({ "audio": true }, use_stream, function() {});
+
+		var sample_length_milliseconds = 100;
+		function use_stream(stream)
+		{
+			var audio_context = new AudioContext();
+			var microphone = audio_context.createMediaStreamSource(stream);
+			var script_processor = audio_context.createScriptProcessor(256, 1, 1);
+
+			var buffer = [];
+			var recording = false;
+			function capture_audio(event)
+			{
+				if (!recording)
+					return;
+
+				buffer = buffer.concat(Array.prototype.slice.call(event.inputBuffer.getChannelData(0)));
+
+				// Stop recording after sample_length_milliseconds.
+				if (buffer.length > sample_length_milliseconds * audio_context.sampleRate / 1000)
+				{
+					recording = false;
+					process_time_series(buffer);
+					buffer = [];
+				}
+			};
+
+			script_processor.onaudioprocess = capture_audio;
+			script_processor.connect(audio_context.destination);
+			microphone.connect(script_processor);
+
+			document.getElementById("capture").addEventListener
+			(
+				"click",
+				function()
+				{
+					recording = true;
+				}
+			);
+		}
 	}
 );
 
-function get_time_series(analyzer)
+function process_time_series(time_series)
 {
-	var buffers = new Uint8Array(analyzer.fftSize);
-	analyzer.getByteTimeDomainData(buffer);
-
-	var frequency_amplitudes = fourier_transform(buffer);
+	var frequency_amplitudes = fourier_transform(time_series);
 	// Skip the zero-frequency mode, which always has a huge amplitude.
 	var magnitudes = frequency_amplitudes.slice(1).map(function(z) { return z[0] * z[0] + z[1] * z[1]; });
 	//console.log(magnitudes);
@@ -44,7 +69,7 @@ function get_time_series(analyzer)
 		maximum_magnitude = magnitudes[i];
 	}
 
-	var dominant_frequency = maximum_index * analyzer.context.sampleRate / analyzer.fftSize;
+	var dominant_frequency = maximum_index * 44100 / time_series.length;
 	console.log("dominant frequency appears to be %f", dominant_frequency);
 	var semitones_up = 12 * Math.log(dominant_frequency / 82.41) / Math.log(2);
 	console.log("%f semitones above E (82.41 Hz)", semitones_up);
@@ -54,7 +79,7 @@ function fourier_transform(time_series)
 {
 	var scale_factor = 2 * Math.PI / time_series.length;
 	var amplitudes = [];
-	for (var k = 0; k < 20; k++)
+	for (var k = 0; k < 50; k++)
 	{
 		var accumulator = [ 0, 0 ];
 		for (var t = 0; t < time_series.length; t++)
@@ -73,8 +98,5 @@ function fourier_transform(time_series)
 
 <body>
 <button id="capture">capture</button>
-<br><br>
-<div id="visualization">
-</div>
 </body>
 </html>
