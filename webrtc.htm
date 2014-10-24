@@ -1,0 +1,193 @@
+<html>
+<head>
+<style>
+div.bar-container
+{
+	float: left;
+	position: relative;
+	height: 300px;
+	width: 12px;
+	margin: 5px;
+	background: white;
+}
+
+div.bar
+{
+	position: absolute;
+	bottom: 10%;
+	height: 90%;
+	width: 100%;
+	background: steelblue;
+}
+
+div.bar-label
+{
+	position: absolute;
+	bottom: 0;
+}
+</style>
+<script>
+navigator.webkitGetUserMedia({ "audio": true }, UseStream, function() { console.log(arguments); });
+
+var NumberOfOctaves = 4;
+var NoteNames = [ "E", "F", "F#", "G", "G#", "A", "A#", "B", "C", "C#", "D", "D#" ];
+var Notes = {};
+for (var i = 0; i < NumberOfOctaves * 12; i++)
+{
+	var NoteName = NoteNames[i % 12];
+	Notes[NoteName] = Notes[NoteName] || [];
+	Notes[NoteName].push(82.41 * Math.pow(2, i / 12));
+}
+
+var AC;
+var Analyzer;
+function UseStream(Stream)
+{
+	AC = new webkitAudioContext();
+	var StreamSource = AC.createMediaStreamSource(Stream);
+	Analyzer = AC.createAnalyser();
+	StreamSource.connect(Analyzer);
+	AC.fftSize = 2048;
+	AC.frequencyBinCount = 1024;
+}
+
+window.addEventListener
+(
+	"load",
+	function()
+	{
+		var RepeatInterval;
+		document.getElementById("once").addEventListener("click", function() { GetTimeSeries(Analyzer); });
+		document.getElementById("start").addEventListener("click", function() { RepeatInterval = setInterval(function() { GetTimeSeries(Analyzer); }, 1000); });
+		document.getElementById("stop").addEventListener("click", function() { clearInterval(RepeatInterval); });
+	}
+);
+
+function GetTimeSeries(Analyzer)
+{
+	var Buffer = new Uint8Array(AC.fftSize);
+	Analyzer.getByteTimeDomainData(Buffer);
+	var SignedBuffer = [];
+	for (var i = 0; i < Buffer.length; i++)
+		SignedBuffer.push(Buffer[i] - 128);
+
+	console.log(JSON.stringify(SignedBuffer));
+
+	/*
+	var FrequencyBuffer = new Uint8Array(AC.frequencyBinCount);
+	Analyzer.getByteFrequencyData(FrequencyBuffer);
+	console.log(JSON.stringify(FrequencyBuffer));
+	*/
+
+	var s = "";
+	for (var i = 0; i < SignedBuffer.length; i++)
+		s += (i > 0 ? "," : "") + "{" + (i / AC.sampleRate) + "," + SignedBuffer[i] + "}";
+
+	//console.log("{" + s + "}");
+
+	ComplexFourierAnalyze(SignedBuffer);
+}
+
+function RealFourierAnalyze(Buffer)
+{
+	// Start the buffer from a zero so cosine terms can be neglected.
+	for (var i = 0; i < Buffer.length; i++)
+	{
+		if (Buffer[i] == 0)
+		{
+			Buffer = Buffer.slice(i);
+			break;
+		}
+	}
+
+	ComputeCorrelations(Buffer);
+}
+
+function ComplexFourierAnalyze(Buffer)
+{
+	ComputeCorrelations(Buffer, true);
+}
+
+function ComputeCorrelations(Buffer, Complex)
+{
+	var FavoriteNote = { "Value": 0 };
+	var FavoriteFrequency = { "Value": 0 };
+	var Scale = 1 / AC.sampleRate;
+
+	var AllCorrelations = [];
+	for (var N in Notes)
+	{
+		var Correlations = Notes[N].map
+		(
+			function(Frequency)
+			{
+				var Coefficient = 2 * Math.PI * Frequency * Scale;
+
+				var CorrelationSine = 0;
+				for (var i = 0; i < Buffer.length; i++)
+					CorrelationSine += Buffer[i] * Math.sin(Coefficient * i);
+
+				var CorrelationCosine = 0;
+				if (Complex)
+				{
+					for (var i = 0; i < Buffer.length; i++)
+						CorrelationCosine += Buffer[i] * Math.cos(Coefficient * i);
+				}
+
+				var Correlation;
+				if (Complex) Correlation = Math.sqrt(CorrelationSine * CorrelationSine + CorrelationCosine + CorrelationCosine);
+				else Correlation = Math.abs(CorrelationSine);
+
+				if (Correlation > FavoriteFrequency.Value) FavoriteFrequency = { "Frequency": Frequency.toFixed(2), "Value": Correlation, "Note": N };
+				//console.log(N + " " + Frequency.toFixed(2) + ": correlation = " + Correlation.toFixed(2));
+				return { "Frequency": Frequency.toFixed(2), "Note": N, "Correlation": Correlation };
+			}
+		);
+
+		Correlations.forEach(function(C) { AllCorrelations.push(C); });
+
+		var Sum = 0;
+		Correlations.forEach(function(C) { Sum += C.Correlation; });
+		var Mean = Sum / Correlations.length;
+		if (Mean > FavoriteNote.Value) FavoriteNote = { "Note": N, "Value": Mean };
+	}
+
+	console.log("I think I'm hearing the note: " + FavoriteNote.Note + ". The strongest frequency is " + FavoriteFrequency.Frequency + " Hz (" + FavoriteFrequency.Note + ")");
+
+	var v = document.getElementById("visualization");
+	while (v.hasChildNodes()) { v.removeChild(v.lastChild); }
+
+	AllCorrelations.sort(function(A, B) { return A.Frequency - B.Frequency; });
+	//console.log(JSON.stringify(AllCorrelations));
+	AllCorrelations.forEach
+	(
+		function(C)
+		{
+			var BarContainer = document.createElement("div");
+			BarContainer.className = "bar-container";
+			var Bar = document.createElement("div");
+			Bar.className = "bar";
+			Bar.style.height = (90 * (C.Correlation / FavoriteFrequency.Value)) + "%";
+			BarContainer.appendChild(Bar);
+			var BarLabel = document.createElement("div");
+			BarLabel.className = "bar-label";
+			//BarLabel.textContent = C.Frequency + " Hz";
+			BarLabel.textContent = C.Note;
+			BarContainer.appendChild(BarLabel);
+			v.appendChild(BarContainer);
+		}
+	);
+
+}
+</script>
+</head>
+
+<body>
+<button id="once">once</button>
+<button id="start">start</button>
+<button id="stop">stop</button>
+<br><br>
+<div id="visualization">
+</div>
+</body>
+</html>
