@@ -9,6 +9,7 @@ window.addEventListener
 	{
 		navigator.webkitGetUserMedia({ "audio": true }, use_stream, function() {});
 
+		var recording_timer;
 		var fourier_worker = new Worker("fft.js");
 		var sample_length_milliseconds = 200;
 		var audio_context = new AudioContext();
@@ -39,17 +40,14 @@ window.addEventListener
 			script_processor.connect(audio_context.destination);
 			microphone.connect(script_processor);
 
-			/*document.getElementById("capture").addEventListener
-			(
-				"click",
-				function()
-				{
-					recording = true;
-				}
-			);*/
-
-			setInterval(function() { recording = true; }, 500);
+			recording_timer = setInterval(function() { recording = true; }, 500);
 		}
+
+		document.getElementById("stop").addEventListener
+		(
+			"click",
+			function() { clearInterval(recording_timer); }
+		);
 
 		fourier_worker.addEventListener("message", interpret_fourier_result);
 
@@ -77,7 +75,6 @@ window.addEventListener
 
 			// Adding one to the index because we cut off the zero-frequency mode.
 			var dominant_frequency = (maximum_index + 1) * audio_context.sampleRate / time_series.length;
-			console.log("dominant frequency appears to be %f", dominant_frequency);
 			var semitones_up = 12 * Math.log(dominant_frequency / e_note) / Math.log(2);
 
 			var note_index = Math.round(semitones_up) % 12;
@@ -86,7 +83,7 @@ window.addEventListener
 
 			var note_name = notes[note_index];
 			var closest_named_frequency = e_note * Math.pow(2, Math.round(semitones_up) / 12);
-			console.log("%f semitones above E (82.41 Hz), closest to %s (%f)", semitones_up, note_name, closest_named_frequency);
+			console.log("%s. peak/average = %f. freq = %f, closest to %f", note_name, maximum_magnitude / average, dominant_frequency, closest_named_frequency);
 		}
 	}
 );
@@ -94,5 +91,6 @@ window.addEventListener
 </head>
 
 <body>
+<button id="stop">stop</button>
 </body>
 </html>
