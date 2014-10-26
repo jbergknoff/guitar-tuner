@@ -1,25 +1,31 @@
 self.onmessage = function(event)
 {
-	var frequency_amplitudes = fourier_transform(event.data);
+	var timeseries = event.data.timeseries;
+	var test_frequencies = event.data.test_frequencies;
+	var sample_rate = event.data.sample_rate;
+	var amplitudes = compute_correlations(timeseries, test_frequencies);
 	self.postMessage({ "time_series": event.data, "frequency_amplitudes": frequency_amplitudes });
 };
 
-function fourier_transform(time_series)
+function compute_correlations(timeseries, test_frequencies, sample_rate)
 {
-	var scale_factor = 2 * Math.PI / time_series.length;
-	var amplitudes = [];
-	// TODO: cutting off k arbitrarily here. base this off of the length of the time series.
-	for (var k = 0; k < 100; k++)
-	{
-		var accumulator = [ 0, 0 ];
-		for (var t = 0; t < time_series.length; t++)
+	// 2pi * frequency gives the appropriate period to sine.
+	// timeseries index / sample_rate gives the appropriate time coordinate.
+	var scale_factor = 2 * Math.PI / sample_rate;
+	var amplitudes = test_frequencies.map
+	(
+		function(f)
 		{
-			accumulator[0] += time_series[t] * Math.cos(scale_factor * k * t);
-			accumulator[1] += time_series[t] * Math.sin(scale_factor * k * t);
-		}
+			var accumulator = [ 0, 0 ];
+			for (var t = 0; t < time_series.length; t++)
+			{
+				accumulator[0] += time_series[t] * Math.cos(scale_factor * f * t);
+				accumulator[1] += time_series[t] * Math.sin(scale_factor * f * t);
+			}
 
-		amplitudes.push(accumulator);
-	}
+			return accumulator;
+		}
+	);
 
 	return amplitudes;
 }
