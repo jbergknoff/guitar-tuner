@@ -1,7 +1,17 @@
 <html>
 <head>
 <script>
-// 82.41 Hz is an E note.
+// 65.41 Hz is a C2 note.
+var c_2 = 65.41;
+var test_frequencies = [];
+for (var i = 0; i < 30; i++)
+{
+	var note = c_2 * Math.pow(2, i / 12);
+	var above = note * Math.pow(2, 1 / 48);
+	var below = note * Math.pow(2, -1 / 48);
+	test_frequencies = test_frequencies.concat([ below, note, above ]);
+}
+
 window.addEventListener
 (
 	"load",
@@ -9,44 +19,45 @@ window.addEventListener
 	{
 		navigator.webkitGetUserMedia({ "audio": true }, use_stream, function() {});
 
-		var recording_timer;
 		var fourier_worker = new Worker("fft.js");
-		var sample_length_milliseconds = 200;
 		var audio_context = new AudioContext();
+		var analyzer = audio_context.createAnalyser();
+		var recording = true;
+
 		function use_stream(stream)
 		{
 			var microphone = audio_context.createMediaStreamSource(stream);
-			var script_processor = audio_context.createScriptProcessor(256, 1, 1);
+			analyzer.fftSize = 2048;
+			microphone.connect(analyzer);
+			loop();
+		}
 
-			var buffer = [];
-			var recording = false;
-			function capture_audio(event)
-			{
-				if (!recording)
-					return;
+		function loop()
+		{
+			if (!recording)
+				return;
 
-				buffer = buffer.concat(Array.prototype.slice.call(event.inputBuffer.getChannelData(0)));
+			var data = new Float32Array(analyzer.fftSize);
+			analyzer.getFloatTimeDomainData(data);
 
-				// Stop recording after sample_length_milliseconds.
-				if (buffer.length > sample_length_milliseconds * audio_context.sampleRate / 1000)
+			fourier_worker.postMessage
+			(
 				{
-					recording = false;
-					fourier_worker.postMessage(buffer);
-					buffer = [];
+					"timeseries": Array.prototype.slice.call(data),
+					"test_frequencies": test_frequencies,
+					"sample_rate": audio_context.sampleRate
 				}
-			};
-
-			script_processor.onaudioprocess = capture_audio;
-			script_processor.connect(audio_context.destination);
-			microphone.connect(script_processor);
-
-			recording_timer = setInterval(function() { recording = true; }, 500);
+			);
 		}
 
 		document.getElementById("stop").addEventListener
 		(
 			"click",
-			function() { clearInterval(recording_timer); }
+			function()
+			{
+				recording = !recording;
+				loop();
+			}
 		);
 
 		fourier_worker.addEventListener("message", interpret_fourier_result);
@@ -55,10 +66,9 @@ window.addEventListener
 		var notes = [ "E", "F", "F#", "G", "G#", "A", "A#", "B", "C", "C#", "D", "D#" ];
 		function interpret_fourier_result(event)
 		{
-			var time_series = event.data.time_series;
+			var timeseries = event.data.timeseries;
 			var frequency_amplitudes = event.data.frequency_amplitudes;
-			// Skip the zero-frequency mode, which always has a huge amplitude.
-			var magnitudes = frequency_amplitudes.slice(1).map(function(z) { return z[0] * z[0] + z[1] * z[1]; });
+			var magnitudes = frequency_amplitudes.map(function(z) { return z[0] * z[0] + z[1] * z[1]; });
 			//console.log(magnitudes);
 
 			var average = magnitudes.reduce(function(a, b) { return a + b; }, 0) / magnitudes.length;
@@ -74,7 +84,7 @@ window.addEventListener
 			}
 
 			// Adding one to the index because we cut off the zero-frequency mode.
-			var dominant_frequency = (maximum_index + 1) * audio_context.sampleRate / time_series.length;
+			var dominant_frequency = test_frequencies[maximum_index];
 			var semitones_up = 12 * Math.log(dominant_frequency / e_note) / Math.log(2);
 
 			var note_index = Math.round(semitones_up) % 12;
@@ -83,7 +93,12 @@ window.addEventListener
 
 			var note_name = notes[note_index];
 			var closest_named_frequency = e_note * Math.pow(2, Math.round(semitones_up) / 12);
-			console.log("%s. peak/average = %f. freq = %f, closest to %f", note_name, maximum_magnitude / average, dominant_frequency, closest_named_frequency);
+			var confidence = maximum_magnitude / average;
+			var confidence_threshold = 10; // empirical, arbitrary.
+			if (confidence > confidence_threshold)
+				console.log("%s. peak/average = %f. freq = %f, closest to %f", note_name, maximum_magnitude / average, dominant_frequency, closest_named_frequency);
+
+			loop();
 		}
 	}
 );

@@ -3,8 +3,8 @@ self.onmessage = function(event)
 	var timeseries = event.data.timeseries;
 	var test_frequencies = event.data.test_frequencies;
 	var sample_rate = event.data.sample_rate;
-	var amplitudes = compute_correlations(timeseries, test_frequencies);
-	self.postMessage({ "time_series": event.data, "frequency_amplitudes": frequency_amplitudes });
+	var amplitudes = compute_correlations(timeseries, test_frequencies, sample_rate);
+	self.postMessage({ "timeseries": timeseries, "frequency_amplitudes": amplitudes });
 };
 
 function compute_correlations(timeseries, test_frequencies, sample_rate)
@@ -17,10 +17,10 @@ function compute_correlations(timeseries, test_frequencies, sample_rate)
 		function(f)
 		{
 			var accumulator = [ 0, 0 ];
-			for (var t = 0; t < time_series.length; t++)
+			for (var t = 0; t < timeseries.length; t++)
 			{
-				accumulator[0] += time_series[t] * Math.cos(scale_factor * f * t);
-				accumulator[1] += time_series[t] * Math.sin(scale_factor * f * t);
+				accumulator[0] += timeseries[t] * Math.cos(scale_factor * f * t);
+				accumulator[1] += timeseries[t] * Math.sin(scale_factor * f * t);
 			}
 
 			return accumulator;
