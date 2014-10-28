@@ -17,7 +17,10 @@ window.addEventListener
 	"load",
 	function()
 	{
-		navigator.webkitGetUserMedia({ "audio": true }, use_stream, function() {});
+		var get_user_media = navigator.getUserMedia;
+		get_user_media = get_user_media || navigator.webkitGetUserMedia;
+		get_user_media = get_user_media || navigator.mozGetUserMedia;
+		get_user_media({ "audio": true }, use_stream, function() {});
 
 		var fourier_worker = new Worker("correlation_worker.js");
 
