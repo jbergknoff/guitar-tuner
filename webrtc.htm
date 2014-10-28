@@ -19,7 +19,7 @@ window.addEventListener
 	{
 		navigator.webkitGetUserMedia({ "audio": true }, use_stream, function() {});
 
-		var fourier_worker = new Worker("fft.js");
+		var fourier_worker = new Worker("correlation_worker.js");
 
 		function use_stream(stream)
 		{
