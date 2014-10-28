@@ -22,44 +22,45 @@ window.addEventListener
 		var fourier_worker = new Worker("fft.js");
 		var audio_context = new AudioContext();
 
-		var analyzer = audio_context.createAnalyser();
+		var sample_length_milliseconds = 100;
 		var recording = true;
 
 		function use_stream(stream)
 		{
 			var microphone = audio_context.createMediaStreamSource(stream);
-			analyzer.fftSize = 2048;
-			microphone.connect(analyzer);
-			loop();
-		}
+			var script_processor = audio_context.createScriptProcessor(1024, 1, 1);
 
-		function loop()
-		{
-			if (!recording)
-				return;
-
-			var data = new Float32Array(analyzer.fftSize);
-			analyzer.getFloatTimeDomainData(data);
-
-			fourier_worker.postMessage
-			(
-				{
-					"timeseries": Array.prototype.slice.call(data),
-					"test_frequencies": test_frequencies,
-					"sample_rate": audio_context.sampleRate
-				}
-			);
-		}
-
-		document.getElementById("stop").addEventListener
-		(
-			"click",
-			function()
+			var buffer = [];
+			function capture_audio(event)
 			{
-				recording = !recording;
-				loop();
-			}
-		);
+				if (!recording)
+					return;
+
+				buffer = buffer.concat(Array.prototype.slice.call(event.inputBuffer.getChannelData(0)));
+
+				// Stop recording after sample_length_milliseconds.
+				if (buffer.length > sample_length_milliseconds * audio_context.sampleRate / 1000)
+				{
+					recording = false;
+
+					fourier_worker.postMessage
+					(
+						{
+							"timeseries": buffer,
+							"test_frequencies": test_frequencies,
+							"sample_rate": audio_context.sampleRate
+						}
+					);
+
+					buffer = [];
+					setTimeout(function() { recording = true; }, 250);
+				}
+			};
+
+			script_processor.onaudioprocess = capture_audio;
+			script_processor.connect(audio_context.destination);
+			microphone.connect(script_processor);
+		}
 
 		fourier_worker.addEventListener("message", interpret_fourier_result);
 
@@ -105,8 +106,6 @@ window.addEventListener
 					extra = " (a bit sharp)";
 				console.log("%s%s. peak/average = %f. freq = %f, closest to %f", note_name, extra, maximum_magnitude / average, dominant_frequency, closest_named_frequency);
 			}
-
-			setTimeout(loop, 250);
 		}
 	}
 );
@@ -114,6 +113,5 @@ window.addEventListener
 </head>
 
 <body>
-<button id="stop">stop</button>
 </body>
 </html>
