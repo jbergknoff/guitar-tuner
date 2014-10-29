@@ -20,7 +20,7 @@ window.addEventListener
 		var get_user_media = navigator.getUserMedia;
 		get_user_media = get_user_media || navigator.webkitGetUserMedia;
 		get_user_media = get_user_media || navigator.mozGetUserMedia;
-		get_user_media({ "audio": true }, use_stream, function() {});
+		get_user_media.call(navigator, { "audio": true }, use_stream, function() {});
 
 		var fourier_worker = new Worker("correlation_worker.js");
 
@@ -103,10 +103,12 @@ window.addEventListener
 			{
 				var extra = "";
 				if ((maximum_index % 3) === 0)
-					extra = " (a bit flat)";
+					extra = " (but you're a bit flat)";
 				else if ((maximum_index % 3) === 2)
-					extra = " (a bit sharp)";
-				console.log("%s%s. peak/average = %f. freq = %f, closest to %f", note_name, extra, maximum_magnitude / average, dominant_frequency, closest_named_frequency);
+					extra = " (but you're a bit sharp)";
+
+				document.getElementById("note-name").textContent = note_name + extra;
+				document.getElementById("frequency").textContent = dominant_frequency;
 			}
 		}
 	}
@@ -115,5 +117,11 @@ window.addEventListener
 </head>
 
 <body>
+<p>It sounds like you're playing...</p>
+<h1 id="note-name"></h1>
+<p>
+	<span>frequency:</span>
+	<span id="frequency"></span>
+</p>
 </body>
 </html>
