@@ -111,6 +111,10 @@ window.addEventListener
 				document.getElementById("frequency").textContent = dominant_frequency;
 			}
 		}
+
+		// TODO: script processor stops processing audio in both chrome and firefox. why?
+		//		especially bad if i try to pause in the debugger.
+		// TODO: issues identifying the open low E and A strings.
 	}
 );
 </script>
