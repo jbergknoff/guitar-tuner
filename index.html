@@ -106,6 +106,27 @@ window.addEventListener
 				document.getElementById("frequency").textContent = dominant_frequency.frequency;
 			}
 		}
+
+		document.getElementById("play-note").addEventListener("click", toggle_playing_note);
+
+		var note_context = new AudioContext();
+		var note_node = note_context.createOscillator();
+		var gain_node = note_context.createGain();
+		note_node.frequency = C2 * Math.pow(2, 4 / 12); // E, ~82.41 Hz.
+		gain_node.gain.value = 0;
+		note_node.connect(gain_node);
+		gain_node.connect(note_context.destination);
+		note_node.start();
+
+		var playing = false;
+		function toggle_playing_note()
+		{
+			playing = !playing;
+			if (playing)
+				gain_node.gain.value = 0.1;
+			else
+				gain_node.gain.value = 0;
+		}
 	}
 );
 </script>
@@ -118,5 +139,7 @@ window.addEventListener
 	<span>frequency:</span>
 	<span id="frequency"></span>
 </p>
+<hr>
+<button id="play-note">start/stop an E note</button>
 </body>
 </html>
