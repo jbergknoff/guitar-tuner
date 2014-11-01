@@ -16,11 +16,14 @@ function compute_correlations(timeseries, test_frequencies, sample_rate)
 	(
 		function(f)
 		{
+			var frequency = f.frequency;
+
+			// Represent a complex number as a length-2 array [ real, imaginary ].
 			var accumulator = [ 0, 0 ];
 			for (var t = 0; t < timeseries.length; t++)
 			{
-				accumulator[0] += timeseries[t] * Math.cos(scale_factor * f * t);
-				accumulator[1] += timeseries[t] * Math.sin(scale_factor * f * t);
+				accumulator[0] += timeseries[t] * Math.cos(scale_factor * frequency * t);
+				accumulator[1] += timeseries[t] * Math.sin(scale_factor * frequency * t);
 			}
 
 			return accumulator;

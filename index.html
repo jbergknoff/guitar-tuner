@@ -2,14 +2,17 @@
 <head>
 <script>
 // 65.41 Hz is a C2 note.
-var c_2 = 65.41;
+var C2 = 65.41;
+var notes = [ "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" ];
 var test_frequencies = [];
 for (var i = 0; i < 30; i++)
 {
-	var note = c_2 * Math.pow(2, i / 12);
-	var above = note * Math.pow(2, 1 / 48);
-	var below = note * Math.pow(2, -1 / 48);
-	test_frequencies = test_frequencies.concat([ below, note, above ]);
+	var note_frequency = C2 * Math.pow(2, i / 12);
+	var note_name = notes[i % 12];
+	var note = { "frequency": note_frequency, "name": note_name };
+	var just_above = { "frequency": note_frequency * Math.pow(2, 1 / 48), "name": note_name + " (a bit sharp)" };
+	var just_below = { "frequency": note_frequency * Math.pow(2, -1 / 48), "name": note_name + " (a bit flat)" };
+	test_frequencies = test_frequencies.concat([ just_below, note, just_above ]);
 }
 
 window.addEventListener
@@ -71,16 +74,16 @@ window.addEventListener
 
 		fourier_worker.addEventListener("message", interpret_fourier_result);
 
-		var e_note = 82.41; // Hz
-		var notes = [ "E", "F", "F#", "G", "G#", "A", "A#", "B", "C", "C#", "D", "D#" ];
 		function interpret_fourier_result(event)
 		{
 			var timeseries = event.data.timeseries;
 			var frequency_amplitudes = event.data.frequency_amplitudes;
-			var magnitudes = frequency_amplitudes.map(function(z) { return z[0] * z[0] + z[1] * z[1]; });
-			//console.log(magnitudes);
 
-			var average = magnitudes.reduce(function(a, b) { return a + b; }, 0) / magnitudes.length;
+			// Compute the (squared) magnitudes of the complex amplitudes for each
+			// test frequency.
+			var magnitudes = frequency_amplitudes.map(function(z) { return z[0] * z[0] + z[1] * z[1]; });
+
+			// Find the maximum in the list of magnitudes.
 			var maximum_index = -1;
 			var maximum_magnitude = 0;
 			for (var i = 0; i < magnitudes.length; i++)
@@ -92,34 +95,18 @@ window.addEventListener
 				maximum_magnitude = magnitudes[i];
 			}
 
-			// Adding one to the index because we cut off the zero-frequency mode.
-			var dominant_frequency = test_frequencies[maximum_index];
-			var semitones_up = 12 * Math.log(dominant_frequency / e_note) / Math.log(2);
-
-			var note_index = Math.round(semitones_up) % 12;
-			if (note_index < 0)
-				note_index += 12;
-
-			var note_name = notes[note_index];
-			var closest_named_frequency = e_note * Math.pow(2, Math.round(semitones_up) / 12);
+			// Compute the average magnitude. We'll only pay attention to frequencies
+			// with magnitudes significantly above average.
+			var average = magnitudes.reduce(function(a, b) { return a + b; }, 0) / magnitudes.length;
 			var confidence = maximum_magnitude / average;
 			var confidence_threshold = 10; // empirical, arbitrary.
 			if (confidence > confidence_threshold)
 			{
-				var extra = "";
-				if ((maximum_index % 3) === 0)
-					extra = " (but you're a bit flat)";
-				else if ((maximum_index % 3) === 2)
-					extra = " (but you're a bit sharp)";
-
-				document.getElementById("note-name").textContent = note_name + extra;
-				document.getElementById("frequency").textContent = dominant_frequency;
+				var dominant_frequency = test_frequencies[maximum_index];
+				document.getElementById("note-name").textContent = dominant_frequency.name;
+				document.getElementById("frequency").textContent = dominant_frequency.frequency;
 			}
 		}
-
-		// TODO: script processor stops processing audio in both chrome and firefox. why?
-		//		especially bad if i try to pause in the debugger.
-		// TODO: issues identifying the open low E and A strings.
 	}
 );
 </script>
