@@ -1,8 +1,8 @@
 <html>
 <head>
 <script>
-// 65.41 Hz is a C2 note.
-var C2 = 65.41;
+// Define the set of test frequencies that we'll use to analyze microphone data.
+var C2 = 65.41; // C2 note, in Hz.
 var notes = [ "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" ];
 var test_frequencies = [];
 for (var i = 0; i < 30; i++)
@@ -109,6 +109,7 @@ function interpret_correlation_result(event)
 	}
 }
 
+// Unnecessary addition of button to play an E note.
 var note_context = new AudioContext();
 var note_node = note_context.createOscillator();
 var gain_node = note_context.createGain();
