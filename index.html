@@ -25,7 +25,8 @@ window.addEventListener
 		get_user_media = get_user_media || navigator.mozGetUserMedia;
 		get_user_media.call(navigator, { "audio": true }, use_stream, function() {});
 
-		var fourier_worker = new Worker("correlation_worker.js");
+		var correlation_worker = new Worker("correlation_worker.js");
+		correlation_worker.addEventListener("message", interpret_correlation_result);
 
 		function use_stream(stream)
 		{
@@ -55,7 +56,7 @@ window.addEventListener
 				{
 					recording = false;
 
-					fourier_worker.postMessage
+					correlation_worker.postMessage
 					(
 						{
 							"timeseries": buffer,
@@ -72,9 +73,7 @@ window.addEventListener
 			script_processor.onaudioprocess = window.capture_audio;
 		}
 
-		fourier_worker.addEventListener("message", interpret_fourier_result);
-
-		function interpret_fourier_result(event)
+		function interpret_correlation_result(event)
 		{
 			var timeseries = event.data.timeseries;
 			var frequency_amplitudes = event.data.frequency_amplitudes;
