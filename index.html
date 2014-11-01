@@ -30,14 +30,17 @@ window.addEventListener
 			var microphone = audio_context.createMediaStreamSource(stream);
 			var script_processor = audio_context.createScriptProcessor(1024, 1, 1);
 
-			script_processor.onaudioprocess = capture_audio;
 			script_processor.connect(audio_context.destination);
 			microphone.connect(script_processor);
 
 			var buffer = [];
 			var sample_length_milliseconds = 100;
 			var recording = true;
-			function capture_audio(event)
+
+			// Need to leak this function into the global namespace so it doesn't get
+			// prematurely garbage-collected.
+			// http://lists.w3.org/Archives/Public/public-audio/2013JanMar/0304.html
+			window.capture_audio = function(event)
 			{
 				if (!recording)
 					return;
@@ -62,6 +65,8 @@ window.addEventListener
 					setTimeout(function() { recording = true; }, 250);
 				}
 			};
+
+			script_processor.onaudioprocess = window.capture_audio;
 		}
 
 		fourier_worker.addEventListener("message", interpret_fourier_result);
