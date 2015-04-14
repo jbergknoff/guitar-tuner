@@ -34,6 +34,7 @@ function use_stream(stream)
 {
 	var audio_context = new AudioContext();
 	var microphone = audio_context.createMediaStreamSource(stream);
+	window.source = microphone; // Workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=934512
 	var script_processor = audio_context.createScriptProcessor(1024, 1, 1);
 
 	script_processor.connect(audio_context.destination);
